@@ -1,0 +1,247 @@
+---
+title: "RMangleSeedlings"
+author: "Lila Uzzell"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(plyr)
+library(ggplot2)
+library(colorspace)
+library(scales)
+```
+#Using fishers exact test for R. Mangle Developmental Stage
+##This file is updated from an R Scrip file called "seedlings.R". The section used from that file is the "06/28/24" on line 46. A Fishers exact test will be run instead of a chi-squared test because the expected frequency is less than 5. Data will need to be manipulated from origial file to fix mistakes and change NULL values to NA. 
+```{r data manipulation}
+#Change the capital "S" in 'seedling' in row 15, column 6 to lowercase. Change your NULL values to NA.
+View(seedlings_wide)
+seed <- seedlings_wide
+  seed[seed == "NULL"] = NA
+  seed[15,6] = "seedling"
+View(seed)
+
+#Set the working directory to your "data" folder and export the updated table to a csv.
+setwd("~/Documents/UVI/Thesis/Statistics/R_mangle_Seedlings/RMangleSeedlings/data")
+write.csv(seed, file = "seed.csv", row.names = FALSE)
+```
+
+```{r January vs. April}
+#Stage class data for R. mangle monitoring from January to April
+table(seed$January,seed$April)
+fisher.test(seed$January, seed$April)
+```
+
+```{r April vs. August}
+table(seed$April,seed$August)
+fisher.test(seed$April, seed$August)
+```
+
+```{r August vs. February}
+table(seed$August,seed$February)
+fisher.test(seed$August, seed$February)
+```
+
+#Using linear models to look at percent change in seedling heights
+```{r Looking at Growth Rate Seed Heights}
+#Create a new table that consolidates columns for ease of running stats
+seed.consolidate <- R_Mangle_Seedling_Data_FULL %>% 
+  select(Bay, MoYr, Monitoring_Period, NumberDays, Quadrat, Habitat, Stage, Tag, Tracking_Period, Surv, Surv_Consolidated, Condition, Water_Depth, PercChgOverallByDays)
+head(seed.consolidate)
+```
+
+```{r Looking at Growth Rate Seed Heights}
+#change fields to become factors and numeric
+seed.consolidate$MoYr = as.factor(seed.consolidate$MoYr)
+seed.consolidate$PercChgOverallByDays = as.numeric(seed.consolidate$PercChgOverallByDays)
+seed.consolidate$Habitat = as.factor(seed.consolidate$Habitat)
+seed.consolidate$Bay = as.factor(seed.consolidate$Bay)
+seed.consolidate$Monitoring_Period = as.character(seed.consolidate$Monitoring_Period)
+seed.consolidate$NumberDays = as.factor(seed.consolidate$NumberDays)
+seed.consolidate$Quadrat = as.factor(seed.consolidate$Quadrat)
+seed.consolidate$Stage = as.factor(seed.consolidate$Stage)
+seed.consolidate$Tag = as.factor(seed.consolidate$Tag)
+seed.consolidate$Tracking_Period = as.factor(seed.consolidate$Tracking_Period)
+seed.consolidate$Surv = as.factor(seed.consolidate$Surv)
+seed.consolidate$Surv_Consolidated = as.factor(seed.consolidate$Surv_Consolidated)
+seed.consolidate$Condition = as.factor(seed.consolidate$Condition)
+View(seed.consolidate)
+```
+
+```{r Looking at Growth Rate Seed Heights}
+growthrate <- lm(PercChgOverallByDays ~ MoYr*Habitat, data = seed.consolidate)
+summary(growthrate)
+```
+
+```{r Create Plot}
+plot <- ggplot(seed.consolidate, aes(x=MoYr, y= PercChgOverallByDays, fill= Habitat)) +
+  geom_boxplot()+
+  theme_classic() +
+  scale_fill_brewer(palette = "BuPu") +
+  xlab("Monitoring Period")+
+  ylab("Percent Change in Height Overall By Day")
+plot
+```
+
+
+```{r Play around with Bar Graphs}
+#lets remove January and the new plants that occurred each visit (or, the plants with percent change of 0)
+organize.data <- seed.consolidate %>% 
+  select(Bay, Habitat, MoYr, Monitoring_Period, Tracking_Period, Quadrat, Tag, Stage, Surv_Consolidated, PercChgOverallByDays, everything())
+View(organize.data)
+```
+
+```{r remove january and NA data or Dead plants}
+remove.jan.na <- organize.data %>% 
+  filter(Surv_Consolidated != "D",
+         MoYr != "23-Jan")
+View(remove.jan.na)
+```
+
+## linear models for Habitat and Bay with zeros included
+```{r Looking at % change in Seed Heights between time period and habitat WITH ZERO DATA INCLUDED}
+growthrate.nojan.hab <- lm(PercChgOverallByDays ~ MoYr*Habitat, data = remove.jan.na)
+summary(growthrate.nojan.hab)
+```
+
+```{r Looking at % change in Seed Heights between time period and bay WITH ZERO DATA INCLUDED}
+growthrate.nojan.bay <- lm(PercChgOverallByDays ~ MoYr*Bay, data = remove.jan.na)
+summary(growthrate.nojan.bay)
+```
+
+## linear models for Habitat and Bay with zeros removed
+```{r remove zero data}
+# Removing zero data removes the new plants found within each monitoring period (i.e.- new plants would always have a percent change in growth of 0.0 because they appeared between monitoring periods)
+remove.zero <- remove.jan.na %>% 
+  filter(PercChgOverallByDays != "0")
+View(remove.zero)
+```
+
+```{r Looking at % change in Seed Heights between time period and habitat ZEROS REMOVED}
+growthrate.nojan.nozero.hab <- lm(PercChgOverallByDays ~ MoYr*Habitat, data = remove.zero)
+summary(growthrate.nojan.nozero.hab)
+```
+
+```{r Looking at % change in Seed Heights between time period and bay ZEROS REMOVED}
+growthrate.nojan.nozero.bay <- lm(PercChgOverallByDays ~ MoYr*Bay, data = remove.zero)
+summary(growthrate.nojan.nozero.bay)
+```
+
+## Plots for Percent Change in Seedling Height Overall By Day
+```{r color pallets}
+pal1 <- sequential_hcl(2, "Mint")
+```
+
+###Zeros Included
+```{r Create Plot for Habitat with zeros included}
+plot.hab <- ggplot(remove.jan.na, aes(x=MoYr, y= PercChgOverallByDays, fill= Habitat)) +
+  geom_boxplot()+
+  coord_cartesian(ylim = c(-0.2,0.5))+
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray")+
+  theme_classic() +
+  scale_fill_brewer(palette = "BuPu")+
+  xlab("Monitoring Period")+
+  ylab("Percent Change in Height Overall By Day")
+plot.hab
+```
+
+```{r Create Plot for Bay with zeros included}
+plot.bay <- ggplot(remove.jan.na, aes(x=MoYr, y= PercChgOverallByDays, fill= Bay)) +
+  geom_boxplot()+
+  coord_cartesian(ylim = c(-0.2,0.5))+
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray")+
+  theme_classic() +
+  scale_fill_brewer(palette = "BuPu") +
+  xlab("Monitoring Period")+
+  ylab("Percent Change in Height Overall By Day")
+plot.bay
+```
+
+### Zeros Excluded
+```{r Create Plot for Habitat with zeros removed}
+plot.hab.zeros.removed <- ggplot(remove.zero, aes(x=MoYr, y= PercChgOverallByDays, fill= Habitat)) +
+  geom_boxplot()+
+  coord_cartesian(ylim = c(-0.2,0.6))+
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray")+
+  theme_classic() +
+  scale_fill_brewer(palette = "Orange") +
+  xlab("Monitoring Period")+
+  ylab("Percent Change in Height Overall By Day")
+plot.hab.zeros.removed
+```
+
+```{r Create Plot for Bay with zeros removed}
+plot.bay.zeros.removed <- ggplot(remove.zero, aes(x=MoYr, y= PercChgOverallByDays, fill= Bay)) +
+  geom_boxplot()+
+  coord_cartesian(ylim = c(-0.2,0.6))+
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray")+
+  theme_classic() +
+  scale_fill_brewer(palette = "BuPu") +
+  xlab("Monitoring Period")+
+  ylab("Percent Change in Height Overall By Day")
+plot.bay.zeros.removed
+```
+
+##Using real time data to plot change in height over time
+```{r new table for adding real time}
+add.time <- remove.zero %>%
+  mutate(
+    event_date = case_when(
+      MoYr == "24-Feb" ~ as.Date("2024-02-13"),  # If category is "24-Feb", assign "2024-02-13"
+      MoYr == "23-Apr" ~ as.Date("2023-04-03"),  # If category is "23-Apr", assign "2023-04-03"
+      MoYr == "23-Aug" ~ as.Date("2023-08-24"),  # If category is "23-Aug", assign "2023-08-24"
+      TRUE ~ NA_Date_                           # Default value for unmatched cases
+    )
+  )
+
+print(add.time)
+```
+
+
+```{r Graphing change in height over time}
+# Create a line plot with a trendline
+ggplot(add.time, aes(x = event_date, y = PercChgOverallByDays)) +
+  geom_smooth(method = "lm", se = FALSE, color = "olivedrab", linetype = "solid") +
+  labs(
+    title = expression(paste("Average Change in ", italic("R. mangle"), " Seedling Height Over Time")),
+    x = "Date",
+    y = "Average Change in Height (per day)"
+  )+
+  theme_classic() +
+  scale_y_continuous(
+    breaks = pretty_breaks(n=10)
+  ) +
+  scale_x_date(date_labels = "%b-%Y", date_breaks = "1 month")
+```
+
+```{r Using linear regression for change in height over time}
+# Fit linear regression model
+seedling.lm <- lm(PercChgOverallByDays ~ event_date, data = add.time)
+
+# Summarize the model
+summary(seedling.lm)
+```
+```{r Extract equation}
+slope <- coef(seedling.lm)[2]  # Slope
+intercept <- coef(seedling.lm)[1] # Intercept
+print(slope) #0.0004417564
+print(intercept) #-8.596396
+# Create the equation as a string
+equation <- paste("y =", round(intercept, 3), "+", round(slope, 5), "x")
+print(equation)
+
+r_squared <- summary(seedling.lm)$r.squared
+p_value <- summary(seedling.lm)$coefficients[2, 4]
+
+# Create the equation with R² and p-value
+equation <- paste(
+  "y =", round(intercept, 2), "+", round(slope, 5), "x\n",
+  "R² =", round(r_squared, 2), "\n",
+  "p =", round(p_value, 3))
+print(equation)
+```
+
